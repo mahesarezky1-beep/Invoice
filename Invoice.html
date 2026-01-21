@@ -1,0 +1,794 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>VisualinStudio — Invoice App</title>
+<style>
+  :root{
+    --bg:#f4f6f9;--card:#fff;--accent:#0f172a;--brand:#0b63d6;--muted:#6b7280
+  }
+  *{box-sizing:border-box;font-family:Inter, system-ui, -apple-system, 'Segoe UI', Roboto, Arial}
+  body{margin:0;background:var(--bg);color:var(--accent);min-height:100vh}
+  /* hamburger */
+  .menu-toggle{position:fixed;left:14px;top:12px;z-index:1200;background:var(--brand);color:#fff;border:0;padding:10px 12px;border-radius:8px;cursor:pointer}
+  /* sidebar */
+  .sidebar{position:fixed;left:-260px;top:0;width:240px;height:100vh;background:#0f172a;color:#fff;padding:20px;transition:left .25s;z-index:1100}
+  .sidebar.open{left:0}
+  .sidebar h2{margin:0 0 12px;font-size:18px}
+  .sidebar nav a{display:block;color:#fff;text-decoration:none;padding:10px;border-radius:6px;margin:6px 0}
+  .sidebar nav a:hover{background:#0b63d6}
+  /* main */
+  .main{margin-left:0;padding:28px;transition:margin-left .25s}
+  .main.shift{margin-left:240px}
+  .container{max-width:1100px;margin:0 auto}
+  .card{background:var(--card);padding:18px;border-radius:12px;box-shadow:0 6px 18px rgba(12,12,12,0.06);margin-bottom:18px}
+  h1{margin:0 0 8px;font-size:20px}
+  label{display:block;font-size:13px;color:var(--muted);margin-top:8px}
+  input[type=text], input[type=number], input[type=date], select, textarea{width:100%;padding:10px;border-radius:8px;border:1px solid #e6e9ef;font-size:14px}
+  .row{display:flex;gap:12px}
+  .row>.col{flex:1}
+  table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+  th,td{padding:8px;border:1px solid #eee;text-align:left}
+  th{background:#f1f5f9}
+  .actions{display:flex;gap:8px;align-items:center;margin-top:12px}
+  .btn{padding:8px 12px;border-radius:8px;border:0;background:var(--brand);color:#fff;cursor:pointer}
+  .btn.ghost{background:transparent;color:var(--accent);border:1px solid #e6e9ef}
+  .small{padding:6px 8px;font-size:13px}
+  .muted{color:var(--muted);font-size:13px}
+  /* login */
+  #loginPage{min-height:100vh;display:flex;align-items:center;justify-content:center}
+  .login-card{width:360px;padding:28px;border-radius:12px;background:#fff;box-shadow:0 6px 20px rgba(0,0,0,0.06)}
+  .login-card h2{margin:0 0 8px;text-align:center}
+  /* invoice print layout */
+  #printArea{display:none}
+  .invoice {
+    max-width:900px;margin:20px auto;padding:28px;background:#fff;border-radius:6px;border:1px solid #e6e9ef;
+  }
+  .inv-head{display:flex;justify-content:space-between;align-items:flex-start}
+  .logoBox{width:180px;height:70px;border-radius:8px;border:1px dashed #cfd8e3;display:flex;align-items:center;justify-content:center;color:#9aa6b7}
+  .companyInfo{font-size:14px}
+  .meta{font-size:13px;text-align:right}
+  .billRow{display:flex;gap:20px;margin-top:18px}
+  .billTo{flex:1}
+  .invTable{margin-top:16px}
+  .summary{width:320px;float:right;margin-top:8px}
+  .summary table{width:100%;border-collapse:collapse}
+  .summary td{padding:6px;border:0;font-size:13px}
+  .summary tr.total td{font-weight:700;border-top:1px solid #ddd}
+  .notes{clear:both;margin-top:18px;font-size:13px;color:#444}
+  .footerNote{text-align:center;margin-top:24px;font-size:13px;color:#333}
+  /* hide elements when printing (except printArea) */
+  @media print {
+    body *{visibility:hidden}
+    #printArea, #printArea *{visibility:visible}
+    #printArea{position:fixed;left:0;top:0;width:100%}
+  }
+  /* responsive */
+  @media (max-width:900px){.row{flex-direction:column}}
+</style>
+</head>
+<body>
+  <!-- LOGIN -->
+  <div id="loginPage">
+    <div class="login-card">
+      <h2>Login — VisualinStudio</h2>
+      <p class="muted" style="text-align:center;margin-top:0">Masuk untuk mengelola invoice</p>
+      <label>Username</label>
+      <input type="text" id="loginUser" placeholder="admin">
+      <label>Password</label>
+      <input type="password" id="loginPass" placeholder="••••••">
+      <div style="text-align:right;margin-top:12px">
+        <button class="btn" onclick="doLogin()">Masuk</button>
+      </div>
+      <p class="muted" style="font-size:13px;margin-top:12px">Default: <b>admin / admin123</b></p>
+    </div>
+  </div>
+
+  <!-- MAIN APP -->
+  <button class="menu-toggle" id="menuBtn" style="display:none" onclick="toggleMenu()">☰</button>
+
+  <aside class="sidebar" id="sidebar">
+    <h2>VisualinStudio</h2>
+    <nav>
+      <a href="#" onclick="showSection('transaksi')">Transaksi Baru</a>
+      <a href="#" onclick="showSection('history')">Histori Transaksi</a>
+      <a href="#" onclick="showSection('reprint')">Cetak Ulang</a>
+      <a href="#" onclick="doLogout()">Logout</a>
+    </nav>
+  </aside>
+
+  <main class="main" id="mainApp" style="display:none">
+    <div class="container">   
+      <header style="display:flex;justify-content:space-between;align-items:center">
+        <div>
+          <h1>VisualinStudio — Invoice & Transaksi</h1>
+          <p class="muted">Kelola transaksi, simpan permanen, cetak invoice</p>
+        </div>
+      </header>
+
+      <!-- TRANSAKSI -->
+      <section id="sect-transaksi" class="card">
+        <h2 style="margin-bottom:6px">Transaksi Baru</h2>
+
+        <div class="row">
+          <div class="col">
+            <label>No. Invoice</label>
+            <input type="text" id="invoiceNo">
+          </div>
+          <div class="col">
+            <label>Tanggal</label>
+            <input type="date" id="invoiceDate">
+          </div>
+        </div>
+
+        <div style="margin-top:10px">
+          <label>Nama Pelanggan / Perusahaan</label>
+          <input type="text" id="billTo" placeholder="Nama pelanggan / perusahaan">
+        </div>
+
+        <div class="row" style="margin-top:8px">
+          <div class="col">
+            <label>Status Pembayaran</label>
+            <select id="paymentStatus">
+              <option>Belum Dibayar</option>
+              <option>DP</option>
+              <option>Lunas</option>
+            </select>
+          </div>
+          <div class="col">
+            <label>Sales Tax (%)</label>
+            <input type="number" id="taxRate" value="0" min="0">
+          </div>
+        </div>
+
+        <h3 style="margin-top:14px">Detail Item</h3>
+        <div style="overflow:auto">
+          <table id="itemsTable">
+            <thead>
+              <tr><th style="width:48%">Deskripsi</th><th style="width:12%">Qty</th><th style="width:16%">Harga / pcs</th><th style="width:16%">Total</th><th style="width:8%"></th></tr>
+            </thead>
+            <tbody id="itemsBody"></tbody>
+          </table>
+        </div>
+
+        <div class="actions">
+          <button class="btn small" onclick="addItemRow()">+ Tambah Item</button>
+          <button class="btn ghost small" onclick="clearItems()">Clear Items</button>
+          <div style="flex:1"></div>
+          <div style="display:flex;gap:8px">
+            <input type="number" id="deposit" placeholder="Deposit (Rp)" style="width:160px" />
+            <input type="number" id="discount" placeholder="Diskon (Rp)" style="width:160px" />
+            <button class="btn" onclick="saveAndPreview()">Simpan & Cetak</button>
+            <button id="btnUpdate" class="btn" onclick="updateInvoice()" style="display:none"> UPDATE DATA </button>
+
+          </div>
+        </div>
+
+        <!-- Tambahan tombol Reset No Invoice (sesuai permintaan) -->
+        <div style="margin-top:10px">
+          <button class="btn ghost small" onclick="resetInvoiceNo()">Reset No Invoice</button>
+        </div>
+      </section>
+
+      <!-- HISTORY -->
+      <section id="sect-history" class="card" style="display:none">
+        <h2>Histori Transaksi</h2>
+        <div style="margin-bottom:8px;display:flex;gap:8px;align-items:center">
+          <label style="margin:0">Filter Tanggal</label>
+          <input type="date" id="filterDate">
+          <button class="btn small" onclick="applyFilter()">Terapkan</button>
+          <div style="flex:1"></div>
+          <button class="btn small" onclick="exportJSON()">Export JSON</button>
+          <!-- Tambahan tombol Reset Histori -->
+          <button class="btn ghost small" onclick="resetHistory()">Reset Histori</button>
+        </div>
+
+        <table id="historyTable">
+          <thead><tr><th>No Invoice</th><th>Tanggal</th><th>Pelanggan</th><th>Total</th><th>Status</th><th>Aksi</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </section>
+
+      <!-- REPRINT -->
+      <section id="sect-reprint" class="card" style="display:none">
+        <h2>Cetak Ulang Invoice</h2>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="text" id="reprintNo" placeholder="Masukkan No Invoice" />
+          <button class="btn" onclick="reprint()">Cari & Cetak</button>
+        </div>
+        <div id="reprintMsg" class="muted" style="margin-top:10px"></div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- PRINT AREA (only invoice view for print) -->
+  <div id="printArea" style="display:none">
+    <div class="invoice" id="invoicePrint">
+      <div class="inv-head">
+        <div style="display:flex;gap:16px;align-items:center">
+          <img src="/images/Logo 1.png" style="width: 70px;" />
+          <div class="VisualinStudio">
+            <strong>VisualinStudio</strong><br>
+            <span class="muted">Online Only</span><br>
+            <span class="muted">Email: Visualin.Studio02@gmail.com • WA: +62 813-9966-0940</span>
+          </div>
+        </div>
+        <div class="meta">
+          <h3 style="margin:0">INVOICE</h3>
+          <div id="pInvoiceNo">-</div>
+          <div id="pDate" class="muted">-</div>
+          <div id="pStatus" class="muted">-</div>
+        </div>
+      </div>
+
+      <div class="billRow">
+        <div class="billTo">
+          <div style="background:#0b63d6;color:#fff;padding:8px;border-radius:4px;display:inline-block;font-weight:600">Bill To:</div>
+          <div style="margin-top:8px" id="pBillTo">-</div>
+        </div>
+        <div style="width:320px">
+          <table style="border:0;margin-left:auto">
+            <tr><td style="border:0;padding:4px 8px"><b>Date</b></td><td style="border:0;padding:4px 8px" id="pMetaDate">-</td></tr>
+            <tr><td style="border:0;padding:4px 8px"><b>Invoice #</b></td><td style="border:0;padding:4px 8px" id="pMetaNo">-</td></tr>
+            <tr><td style="border:0;padding:4px 8px"><b>Customer</b></td><td style="border:0;padding:4px 8px" id="pMetaCustomer">-</td></tr>
+            <tr><td style="border:0;padding:4px 8px"><b>Payment Due</b></td><td style="border:0;padding:4px 8px" id="pMetaDue">-</td></tr>
+          </table>
+        </div>
+      </div>
+
+      <div class="invTable">
+        <table>
+          <thead>
+            <tr><th style="width:50%">Description</th><th style="width:10%">Qty</th><th style="width:15%;text-align:right">Unit Price</th><th style="width:15%;text-align:right">Line Total</th></tr>
+          </thead>
+          <tbody id="pItems"></tbody>
+        </table>
+      </div>
+
+      <div class="summary">
+        <table>
+          <tr><td style="text-align:right">Subtotal</td><td id="pSubtotal" style="text-align:right">Rp 0</td></tr>
+          <tr><td style="text-align:right">Tax</td><td id="pTax" style="text-align:right">Rp 0</td></tr>
+          <tr><td style="text-align:right">Deposit</td><td id="pDeposit" style="text-align:right">Rp 0</td></tr>
+          <tr><td style="text-align:right">Discount</td><td id="pDiscount" style="text-align:right">Rp 0</td></tr>
+          <tr class="total"><td style="text-align:right"><strong>Total</strong></td><td id="pTotal" style="text-align:right"><strong>Rp 0</strong></td></tr>
+        </table>
+      </div>
+
+      <div class="notes">
+        <div style="background:#0b63d6;color:#fff;padding:8px;border-radius:4px;display:inline-block;font-weight:600">Special Notes and Instructions</div>
+        <div style="margin-top:8px" id="pNotes">Harap melakukan pembayaran sebelum 7 hari.</div>
+      </div>
+
+      <div class="footerNote">
+        <div>Make all checks payable to VisualinStudio</div>
+        <div style="margin-top:14px;font-weight:700">Thank you for your business!</div>
+        <div style="margin-top:8px" class="muted">Should you have any enquiries concerning this invoice, please contact Visualin.Studio02@gmail.com</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+  // ---- utilities ----
+  const $ = sel => document.querySelector(sel);
+  const $$ = sel => Array.from(document.querySelectorAll(sel));
+  function rupiah(n){ return 'Rp ' + Number(n||0).toLocaleString('id-ID'); }
+
+  // ---- auth ----
+  function doLogin(){
+    const u = $('#loginUser').value.trim();
+    const p = $('#loginPass').value;
+    if(u==='VisualinStudio' && p==='VisualinStudio02'){
+      localStorage.setItem('vs_logged','1');
+      initApp();
+    } else {
+      alert('Username / password salah.');
+    }
+  }
+  function doLogout(){
+    if(confirm('Logout?')) {
+      localStorage.removeItem('vs_logged');
+      location.reload();
+    }
+  }
+
+  // ---- invoice sequence helpers (peek vs generate) ----
+  function peekNextInvoiceNo(){
+    // don't increment seq, only preview next number
+    const seq = Number(localStorage.getItem('vs_seq')||0) + 1;
+    return 'INV-' + String(seq).padStart(4,'0');
+  }
+  function generateInvoiceNo(){
+    // increment seq and return the generated invoice number
+    const seq = Number(localStorage.getItem('vs_seq')||0) + 1;
+    localStorage.setItem('vs_seq', seq);
+    return 'INV-' + String(seq).padStart(4,'0');
+  }
+
+  // ---- init on load ----
+  function initApp(){
+    // show app
+    $('#loginPage').style.display='none';
+    $('#menuBtn').style.display='block';
+    $('#mainApp').style.display='block';
+    // set defaults
+    $('#invoiceDate').valueAsDate = new Date();
+    // show the preview next invoice number (but do NOT increment yet)
+    $('#invoiceNo').value = peekNextInvoiceNo();
+    // show transaksi section
+    showSection('transaksi');
+    // load history
+    loadHistoryTable();
+    // ensure at least one editable item row
+    if($('#itemsBody').children.length === 0) addItemRow({desc:'Desain Logo',qty:1,price:250000});
+  }
+
+  window.addEventListener('load',()=>{
+    if(localStorage.getItem('vs_logged')==='1'){
+      initApp();
+    } else {
+      $('#loginPage').style.display='flex';
+    }
+  });
+
+  // ---- sidebar toggle & navigation ----
+  function toggleMenu(){
+    const sb = $('#sidebar');
+    sb.classList.toggle('open');
+    $('#mainApp').classList.toggle('shift');
+  }
+  function showSection(key){
+    // hide all sections
+    ['sect-transaksi','sect-history','sect-reprint'].forEach(id=>{
+      $('#'+id).style.display = 'none';
+    });
+    // show selected (note: ids used earlier)
+    if(key==='transaksi') { 
+      $('#sect-transaksi').style.display='block';
+      // if user was viewing an invoice print previously, hide it
+      $('#printArea').style.display = 'none';
+      // ensure the items table is editable row - don't carry print content into form
+      if($('#itemsBody').children.length === 0) addItemRow({desc:'',qty:1,price:0});
+    }
+    if(key==='history'){ $('#sect-history').style.display='block'; loadHistoryTable(); }
+    if(key==='reprint') $('#sect-reprint').style.display='block';
+    // auto close on small screens
+    $('#sidebar').classList.remove('open');
+  }
+
+  // ---- item rows: DOM-based implementation (fixed editable inputs) ----
+  function addItemRow(item={desc:'',qty:1,price:0}){
+    const tr = document.createElement('tr');
+
+    // Description cell
+    const tdDesc = document.createElement('td');
+    const inpDesc = document.createElement('input');
+    inpDesc.type = 'text';
+    inpDesc.className = 'i-desc';
+    inpDesc.value = item.desc || '';
+    tdDesc.appendChild(inpDesc);
+
+    // Qty cell
+    const tdQty = document.createElement('td');
+    const inpQty = document.createElement('input');
+    inpQty.type = 'number';
+    inpQty.className = 'i-qty';
+    inpQty.min = 1;
+    inpQty.value = item.qty || 1;
+    tdQty.appendChild(inpQty);
+
+    // Price cell
+    const tdPrice = document.createElement('td');
+    const inpPrice = document.createElement('input');
+    inpPrice.type = 'number';
+    inpPrice.className = 'i-price';
+    inpPrice.min = 0;
+    inpPrice.value = item.price || 0;
+    tdPrice.appendChild(inpPrice);
+
+    // Line total cell
+    const tdLine = document.createElement('td');
+    tdLine.className = 'i-line';
+    tdLine.textContent = (Number(inpQty.value) * Number(inpPrice.value)) || 0;
+
+    // Action cell (delete)
+    const tdAction = document.createElement('td');
+    const btnRemove = document.createElement('button');
+    btnRemove.type = 'button';
+    btnRemove.className = 'btn btn-danger small';
+    btnRemove.textContent = '✕';
+    btnRemove.addEventListener('click', ()=>{
+      tr.remove();
+      recalc();
+    });
+    tdAction.appendChild(btnRemove);
+
+    tr.appendChild(tdDesc);
+    tr.appendChild(tdQty);
+    tr.appendChild(tdPrice);
+    tr.appendChild(tdLine);
+    tr.appendChild(tdAction);
+
+    // attach listeners for live recalc
+    [inpDesc, inpQty, inpPrice].forEach(inp => {
+      inp.addEventListener('input', recalc);
+    });
+
+    $('#itemsBody').appendChild(tr);
+    recalc();
+  }
+  function addItemRowClick(){ addItemRow({desc:'',qty:1,price:0}); }
+
+  function clearItems(){ $('#itemsBody').innerHTML=''; recalc(); }
+
+  function recalc(){
+    let subtotal = 0;
+    $$('#itemsBody tr').forEach(tr=>{
+      const q = Number(tr.querySelector('.i-qty').value || 0);
+      const p = Number(tr.querySelector('.i-price').value || 0);
+      const line = q * p;
+      const elLine = tr.querySelector('.i-line');
+      if(elLine) elLine.textContent = line;
+      subtotal += line;
+    });
+    const taxRate = Number($('#taxRate').value||0);
+    const tax = Math.round(subtotal * (taxRate/100));
+    const deposit = Number($('#deposit').value||0);
+    const discount = Number($('#discount').value||0);
+    const total = subtotal + tax - discount - deposit;
+    window._currentCalc = {subtotal,tax,deposit,discount,total};
+  }
+
+  // ---- save & preview ----
+  function saveAndPreview(){
+    recalc();
+
+    // If invoiceNo field is empty or equals preview value, generate the real one now
+    const currentFieldVal = $('#invoiceNo').value.trim();
+    // If user left default preview (peek) or blank, we should generate the actual number.
+    // We'll treat both blank and equal to peekNextInvoiceNo() as "generate now".
+    let no;
+    if(!currentFieldVal || currentFieldVal === peekNextInvoiceNo()){
+      no = generateInvoiceNo();
+      $('#invoiceNo').value = no; // assign the real generated number to field (for clarity)
+    } else {
+      // user manually set a custom invoice number -> use it as-is (no seq increment)
+      no = currentFieldVal;
+    }
+
+    const date = $('#invoiceDate').value || new Date().toISOString().slice(0,10);
+    const billTo = $('#billTo').value.trim() || '-';
+    const status = $('#paymentStatus').value;
+    const taxRate = Number($('#taxRate').value||0);
+    const deposit = Number($('#deposit').value||0);
+    const discount = Number($('#discount').value||0);
+    const items = $$('#itemsBody tr').map(tr=>({
+      desc: tr.querySelector('.i-desc').value || '',
+      qty: Number(tr.querySelector('.i-qty').value||0),
+      price: Number(tr.querySelector('.i-price').value||0),
+      line: Number(tr.querySelector('.i-qty').value||0) * Number(tr.querySelector('.i-price').value||0)
+    }));
+    const subtotal = items.reduce((s,i)=>s+i.line,0);
+    const tax = Math.round(subtotal * (taxRate/100));
+    const total = subtotal + tax - discount - deposit;
+    const note = 'Harap melakukan pembayaran sebelum 7 (tujuh) hari sejak tanggal invoice. Kontak: Visualin.Studio02@gmail.com';
+    const inv = {no: no, date, billTo, status, taxRate, deposit, discount, items, subtotal, tax, total, note};
+
+    // persist
+    const invoices = JSON.parse(localStorage.getItem('vs_invoices') || '[]');
+    invoices.push(inv);
+    localStorage.setItem('vs_invoices', JSON.stringify(invoices));
+
+    // render print view and print
+    renderPrint(inv);
+    setTimeout(()=>{ window.print(); }, 100);
+
+    // refresh history UI
+    loadHistoryTable();
+
+    // For the next invoice: display the next preview number (do NOT increment yet)
+    $('#invoiceNo').value = peekNextInvoiceNo();
+
+    // reset form for next invoice
+    clearItems();
+    addItemRow({});
+  }
+
+  // ---- render print invoice ----
+  function renderPrint(inv){
+    const revLabel = inv.revision ? ' (REV-' + inv.revision + ')' : '';
+    $('#pInvoiceNo').textContent = inv.no + revLabel;
+    $('#pMetaNo').textContent = inv.no + revLabel;
+    $('#pDate').textContent = new Date(inv.date).toLocaleDateString('id-ID');
+    $('#pStatus').textContent = inv.status;
+    $('#pBillTo').textContent = inv.billTo;
+    $('#pMetaDate').textContent = new Date(inv.date).toLocaleDateString('id-ID');
+    $('#pMetaCustomer').textContent = inv.billTo;
+    const pItems = $('#pItems');
+    pItems.innerHTML = '';
+    inv.items.forEach(it=>{
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${escapeHtml(it.desc)}</td><td style="text-align:center">${it.qty}</td><td style="text-align:right">${rupiah(it.price)}</td><td style="text-align:right">${rupiah(it.line)}</td>`;
+      pItems.appendChild(tr);
+    });
+    $('#pSubtotal').textContent = rupiah(inv.subtotal);
+    $('#pTax').textContent = rupiah(inv.tax);
+    $('#pDeposit').textContent = rupiah(inv.deposit||0);
+    $('#pDiscount').textContent = rupiah(inv.discount||0);
+    $('#pTotal').textContent = rupiah(inv.total);
+    $('#pNotes').textContent = inv.note || '';
+    $('#printArea').style.display = 'block';
+    window.scrollTo(0,0);
+  }
+
+  // ---- history UI ----
+function loadHistoryTable(filterDate=''){
+  const tbody = $('#historyTable tbody');
+  const invoices = JSON.parse(localStorage.getItem('vs_invoices') || '[]');
+  const f = filterDate || $('#filterDate').value;
+  let rowsHtml = '';
+
+  invoices.forEach(inv=>{
+    if(f && inv.date !== f) return;
+
+    const isVoid = inv.status === 'VOID';
+
+    rowsHtml += `
+      <tr style="${isVoid ? 'opacity:.55;text-decoration:line-through' : ''}">
+        <td>${inv.no}${inv.revision ? ' (REV-' + inv.revision + ')' : ''}</td>
+        <td>${inv.date}</td>
+        <td>${escapeHtml(inv.billTo)}</td>
+        <td>${rupiah(inv.total)}</td>
+        <td>
+        <span class="badge ${
+        inv.status === 'Lunas' ? 'lunas' :
+        inv.status === 'VOID' ? 'void' :
+        inv.status === 'REVISED' ? 'revised' : ''
+        }">
+    ${inv.status}
+  </span>
+</td>
+
+        <td>
+  <button class="btn small" onclick="viewInvoice('${inv.no}')" ${isVoid?'disabled':''}>Lihat</button>
+  <button class="btn small" onclick="printInvoice('${inv.no}')" ${isVoid?'disabled':''}>Cetak</button>
+
+  ${
+    inv.status === 'Lunas'
+      ? ''
+      : inv.status === 'VOID'
+        ? `<button class="btn ghost small" onclick="editAfterVoid('${inv.no}')">UPDATE</button>`
+        : `<button class="btn ghost small" onclick="voidInvoice('${inv.no}')">VOID</button>`
+  }
+</td>
+
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = rowsHtml || `
+    <tr>
+      <td colspan="6" class="muted">Belum ada transaksi</td>
+    </tr>`;
+}
+
+  function applyFilter(){ loadHistoryTable($('#filterDate').value); }
+
+  function viewInvoice(no){
+    const invoices = JSON.parse(localStorage.getItem('vs_invoices') || '[]');
+    const inv = invoices.find(i=>i.no===no);
+    if(!inv){ alert('Invoice tidak ditemukan'); return; }
+    renderPrint(inv);
+  }
+  function printInvoice(no){
+    viewInvoice(no);
+    // when printing an existing invoice we DO NOT change sequence (it's already assigned)
+    setTimeout(()=>window.print(),200);
+  }
+
+  function reprint(){
+    const no = $('#reprintNo').value.trim();
+    if(!no){ $('#reprintMsg').textContent = 'Masukkan nomor invoice.'; return;}
+    const invoices = JSON.parse(localStorage.getItem('vs_invoices') || '[]');
+    const inv = invoices.find(i=>i.no===no);
+    if(!inv){ $('#reprintMsg').textContent = 'Invoice tidak ditemukan.'; return; }
+    $('#reprintMsg').textContent = '';
+    renderPrint(inv);
+    setTimeout(()=>window.print(),200);
+  }
+
+  function exportJSON(){
+    const invoices = JSON.parse(localStorage.getItem('vs_invoices') || '[]');
+    const blob = new Blob([JSON.stringify(invoices,null,2)],{type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download = 'invoices.json'; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ---- tambahan: reset functions ----
+  function resetInvoiceNo(){
+    if(confirm('Yakin reset nomor invoice ke INV-0001? (histori tetap ada)')) {
+      localStorage.setItem('vs_seq', 0);
+      // update preview field
+      $('#invoiceNo').value = peekNextInvoiceNo();
+      alert('Nomor invoice berhasil direset. Invoice berikutnya akan mulai dari ' + peekNextInvoiceNo());
+    }
+  }
+
+  function resetHistory(){
+    if(confirm('Yakin hapus semua histori transaksi? Tindakan ini tidak dapat dibatalkan.')) {
+      localStorage.removeItem('vs_invoices');
+      // optionally also keep seq — here we keep seq as-is; if you want to reset seq as well, uncomment next line:
+      // localStorage.setItem('vs_seq', 0);
+      loadHistoryTable();
+      alert('Semua histori transaksi telah dihapus.');
+    }
+  }
+
+function backToAppAfterPrint(){
+  $('#printArea').style.display='none';
+
+  // CLEAR FORM SETELAH PRINT SELESAI (AMAN)
+  $('#billTo').value='';
+  $('#deposit').value='';
+  $('#discount').value='';
+}
+window.onafterprint = backToAppAfterPrint;
+
+
+  // ---- helper ----
+  function escapeHtml(s){ return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // prepare aliases expected elsewhere
+  (function prepare(){
+    window.addItemRowClick = addItemRowClick;
+  })();
+function voidInvoice(no){
+  if(!confirm('Yakin ingin VOID invoice ini?')) return;
+
+  const invoices = JSON.parse(localStorage.getItem('vs_invoices') || '[]');
+ const idx = invoices.findIndex(i => i.no === no);
+
+if(idx === -1){
+  alert('Invoice tidak ditemukan');
+  return;
+}
+
+if(invoices[idx].status === 'Lunas'){
+  alert('Invoice sudah LUNAS dan tidak bisa di-VOID');
+  return;
+}
+
+
+  invoices[idx].status = 'VOID';
+  localStorage.setItem('vs_invoices', JSON.stringify(invoices));
+
+  window._allowUpdateAfterVoid = true;
+  window._editInvoiceNo = no;
+  document.getElementById('btnUpdate').style.display = 'inline-block';
+
+  const inv = invoices[idx];
+  document.getElementById('invoiceNo').value = inv.no;
+  document.getElementById('invoiceDate').value = inv.date;
+  document.getElementById('billTo').value = inv.billTo;
+  document.getElementById('paymentStatus').value = inv.status;
+  document.getElementById('taxRate').value = inv.taxRate;
+  document.getElementById('deposit').value = inv.deposit;
+  document.getElementById('discount').value = inv.discount;
+
+  document.getElementById('itemsBody').innerHTML = '';
+  inv.items.forEach(it => addItemRow(it));
+
+  loadHistoryTable();
+  alert('Invoice di-VOID. Silakan UPDATE data jika diperlukan.');
+}
+
+function updateInvoice(){
+  if(!window._allowUpdateAfterVoid || !window._editInvoiceNo){
+    alert('Tidak ada invoice VOID yang bisa diupdate');
+    return;
+  }
+
+  recalc();
+
+  const invoices = JSON.parse(localStorage.getItem('vs_invoices') || '[]');
+  const idx = invoices.findIndex(i => i.no === window._editInvoiceNo);
+
+  if(invoices[idx].status === 'Lunas'){
+  alert('Invoice LUNAS tidak bisa di-UPDATE');
+  return;
+}
+
+
+  if(idx === -1){
+    alert('Invoice tidak ditemukan');
+    return;
+  }
+
+  const updatedInvoice = {
+    no: window._editInvoiceNo,
+    date: document.getElementById('invoiceDate').value,
+    billTo: document.getElementById('billTo').value,
+    revision: (invoices[idx].revision || 0) + 1,
+    status: 'REVISED',
+    taxRate: Number(document.getElementById('taxRate').value || 0),
+    deposit: Number(document.getElementById('deposit').value || 0),
+    discount: Number(document.getElementById('discount').value || 0),
+    items: Array.from(document.querySelectorAll('#itemsBody tr')).map(tr => ({
+      desc: tr.querySelector('.i-desc').value,
+      qty: Number(tr.querySelector('.i-qty').value),
+      price: Number(tr.querySelector('.i-price').value),
+      line:
+        Number(tr.querySelector('.i-qty').value) *
+        Number(tr.querySelector('.i-price').value)
+    }))
+  };
+
+  updatedInvoice.subtotal =
+    updatedInvoice.items.reduce((s,i)=>s+i.line,0);
+
+  updatedInvoice.tax =
+    Math.round(updatedInvoice.subtotal * (updatedInvoice.taxRate/100));
+
+  updatedInvoice.total =
+    updatedInvoice.subtotal +
+    updatedInvoice.tax -
+    updatedInvoice.discount -
+    updatedInvoice.deposit;
+
+  updatedInvoice.note =
+    'Harap melakukan pembayaran sebelum 7 (tujuh) hari sejak tanggal invoice.';
+
+  // REPLACE DATA LAMA
+  invoices[idx] = updatedInvoice;
+  localStorage.setItem('vs_invoices', JSON.stringify(invoices));
+
+  // RESET STATE
+  window._allowUpdateAfterVoid = false;
+  window._editInvoiceNo = null;
+  document.getElementById('btnUpdate').style.display = 'none';
+
+  // CETAK ULANG
+  renderPrint(updatedInvoice);
+  setTimeout(()=>window.print(),200);
+
+  loadHistoryTable();
+  alert('Invoice berhasil di-UPDATE & dicetak ulang');
+}
+
+function editAfterVoid(no){
+  const invoices = JSON.parse(localStorage.getItem('vs_invoices') || '[]');
+  const inv = invoices.find(i => i.no === no);
+
+  if(!inv){
+    alert('Invoice tidak ditemukan');
+    return;
+  }
+
+  // Aktifkan mode update
+  window._allowUpdateAfterVoid = true;
+  window._editInvoiceNo = no;
+  document.getElementById('btnUpdate').style.display = 'inline-block';
+
+  // Pindah ke form transaksi
+  showSection('transaksi');
+
+  // Isi ulang form
+  document.getElementById('invoiceNo').value = inv.no;
+  document.getElementById('invoiceDate').value = inv.date;
+  document.getElementById('billTo').value = inv.billTo;
+  document.getElementById('paymentStatus').value = inv.status;
+  document.getElementById('taxRate').value = inv.taxRate;
+  document.getElementById('deposit').value = inv.deposit;
+  document.getElementById('discount').value = inv.discount;
+
+  document.getElementById('itemsBody').innerHTML = '';
+  inv.items.forEach(it => addItemRow(it));
+}
+
+
+</script>
+</body>
+</html>
